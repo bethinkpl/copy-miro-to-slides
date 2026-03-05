@@ -9,19 +9,220 @@
 // @grant        none
 // ==/UserScript==
 
+
+const LAYOUTS = {
+	MEDIA_RIGHT: 'media_right',
+	MEDIA_LEFT: 'media_left',
+	MEDIA_BIG: 'media_big',
+	MEDIA_SMALL: 'media_small',
+	MEDIA: 'media',
+	TEXT: 'text',
+};
+
+const tmChoiceDialogId = 'tm-choice-dialog';
+const tmSelectDialogId = 'tm-select';
+async function convertMiroHtmlToSlideHtml(miroHTML) {
+	let layout;
+
+	const frameNameMatch = miroHTML.match(/<div><div>slide_(.*?)<\/div>/i);
+
+	if (frameNameMatch.length > 1) {
+		const layoutName = frameNameMatch[1];
+		if (Object.values(LAYOUTS).includes(layoutName)) {
+			layout = layoutName;
+		}
+	}
+
+	let slidesHTML = miroHTML
+		.replace(/<span data-meta.*?><\/span>/, '') // remove miro meta
+		.replace(/<div><div>slide_.*?<\/div>/i, '') // remove frame name
+		.replace(/<div><div><div><div><a (.*?)<\/div><\/div><\/div>/, '') // remove sticky card with link
+		.replace(
+			/(?:<div>)?<div><div><div>(.*?)<\/div><\/div><\/div>(?:<\/div>)?/,
+			'<div class="sl-block" data-block-type="text" style="width: 960px; left: 0px; top: 0px; height: auto;" data-name="text-22f558" data-origin-id="cc355d151d11d9d136c98a23bee11868"><div class="sl-block-content" data-placeholder-tag="h1" style="z-index: 11;"><h2>$1</h2>',
+		); // header
+
+	if ((slidesHTML.match(/<div><div><div><div>/g) || []).length > 1) {
+		// Slide contains subheader
+		slidesHTML = slidesHTML.replace(
+			/<div><div><div><div>(.*?)<\/div><\/div><\/div><\/div>/,
+			(match, p1) => {
+				// make subheader parts correct size and replace "-" => "–"
+				const parts = p1.split(' - ').map((part) => part.trim());
+
+				if (parts.length <= 1) return `<p>${p1}</p>`;
+
+				// smaller sizes for subheader parts
+				let result = parts[0];
+				if (parts[1]) {
+					const separatorForNext = parts[2] ? ' – ' : '';
+					result += ` – <span style="font-size:0.7em">${capitalizeFirstLetter(
+						parts[1],
+					)}${separatorForNext}</span>`;
+				}
+				if (parts[2]) {
+					result += `<span style="font-size:0.5em">${capitalizeFirstLetter(
+						parts[2],
+					)}</span>`;
+				}
+
+				return `<p>${result}</p>`;
+			},
+		);
+	}
+
+	// correct divs closing
+	slidesHTML = slidesHTML
+		.replace(/(<\/(p|h2)>)<div>/, '$1</div></div><div>')
+		.replace(/<\/div>$/, '');
+
+	// pagination
+	slidesHTML = slidesHTML.replace(
+		/<div><div><div><div>(\d+\/\d+)<\/div><\/div><\/div><\/div>/,
+		'<div class="sl-block" data-block-type="text" style="height: auto; width: 960px; left: 0px; top: 630px;" data-name="text-2f292c" data-origin-id="9bc07b9d447bd7d371f1aa920fca09db"><div class="sl-block-content" data-placeholder-tag="p" data-placeholder-text="Text" style="z-index: 13;"><p><span style="font-size:0.7em">$1</span></p></div></div>',
+	);
+
+	if (!layout) {
+		if (slidesHTML.includes('LUCID') || slidesHTML.includes('MULTIMEDIUM')) {
+			layout = await pickLayout();
+			if (layout === null) {
+				alert('Coś poszło nie tak z wyborem layoutu');
+				return '';
+			}
+		} else {
+			layout = LAYOUTS.TEXT;
+		}
+	}
+
+	let content =
+		slidesHTML.match(
+			/<div><div><div><div>(?!(?:LUCID|MULTIMEDIUM)<\/div>)(.*?)<\/div><\/div><\/div><\/div>/,
+		)?.[0] ?? '';
+	content = content
+		.replace(/<div><div><div>(.*?)<\/div><\/div><\/div>/, '$1')
+		.replaceAll('<div>', '<p><span style="font-size:0.7em">')
+		.replaceAll('</div>', '</span></p>')
+		.replaceAll('</p><p><span style="font-size:0.7em"><br></span></p>', '<br>&nbsp;</p>') // unify line breaks
+		.replaceAll('</p><p>', '<br>')
+		.replaceAll('color: rgb(26, 26, 26);', ''); // remove black color;
+
+	slidesHTML = slidesHTML.replace(
+		/<div><div><div>(.*?)<\/div><\/div><\/div><\/div>/,
+		getContentHTMLForLayout(content, layout),
+	);
+
+	// remove Lucid text
+	slidesHTML = slidesHTML.replace(
+		/<div><div><div><div>(LUCID|MULTIMEDIUM)<\/div><\/div><\/div><\/div>/,
+		'',
+	);
+
+	// remove Jira card
+	slidesHTML = slidesHTML.replace(/<div><div><div>.*?<\/div><\/div><\/div>/, '');
+
+	return slidesHTML;
+}
+
+function pickLayout() {
+	let dialog = document.getElementById(tmChoiceDialogId);
+
+	if (!dialog) {
+		const optionsHtml = Object.entries(LAYOUTS)
+			.map(([key, value]) => `<option value="${value}">${key}</option>`)
+			.join('');
+
+		const html = `
+				  <dialog id="${tmChoiceDialogId}">
+					<form method="dialog">
+					  <p><strong>Wybierz layout:</strong></p>
+					  <select id="${tmSelectDialogId}">
+						${optionsHtml}
+					  </select>
+					  <div style="display: flex; flex-direction: row-reverse">
+						<button value="ok">OK</button>
+						<button value="cancel">Anuluj</button>
+					  </div>
+					</form>
+				  </dialog>
+				`;
+		document.body.insertAdjacentHTML('beforeend', html);
+		dialog = document.getElementById(tmChoiceDialogId);
+		dialog.addEventListener(
+			'keydown',
+			(e) => {
+				e.stopPropagation();
+			},
+			true,
+		);
+	}
+
+	dialog.showModal();
+	const select = document.getElementById(tmSelectDialogId);
+	select.focus();
+
+	return new Promise((resolve) => {
+		// Nasłuchujemy zamknięcia dialogu
+		dialog.addEventListener(
+			'close',
+			() => {
+				if (dialog.returnValue === 'ok') {
+					resolve(select.value);
+				} else {
+					resolve(null);
+				}
+			},
+			{ once: true },
+		);
+	});
+}
+
+function getContentHTMLForLayout(content, layout) {
+	if (layout === LAYOUTS.MEDIA_RIGHT) {
+		return (
+			`<div class="sl-block" data-block-type="text" data-name="text-ccbc0d" style="height: auto; width: 480px; left: 0px; top: 202px;" data-origin-id="873f32179cf02c875dbd428784327772"><div class="sl-block-content" data-placeholder-tag="p" data-placeholder-text="Text" style="z-index: 11;">${content}</div></div>` +
+			'<div class="sl-block" data-block-type="code" data-name="code-84492d" style="width: 440px; height: 530px; left: 520px; top: 170px;" data-origin-id="9490ec45fa9f1402cde71bf5bc6c5c46"><div class="sl-block-content notranslate" data-highlight-theme="monokai" data-code-frame="none" style="z-index: 12;">\n' +
+			'        <pre style="font-size: 16px; line-height: 19px; tab-size: 4;"><code data-line-numbers=""></code></pre>\n' +
+			'    <div class="editing-ui sl-block-content-preview visible-in-preview"><pre style="font-size: 16px; line-height: 19px; tab-size: 4;"><code data-line-numbers="" class="hljs clojure"><table class="hljs-ln"><tbody><tr><td class="hljs-ln-numbers"><div class="hljs-ln-line hljs-ln-n" data-line-number="1"></div></td><td class="hljs-ln-code"><div class="hljs-ln-line"></div></td></tr></tbody></table></code></pre></div></div>'
+		);
+	}
+	if (layout === LAYOUTS.MEDIA_LEFT) {
+		return (
+			`<div class="sl-block" data-block-type="text" data-name="text-ccbc0d" style="height: auto; width: 480px; left: 480px; top: 190px;" data-origin-id="8b1922e953fa7007fc859482834c569a"><div class="sl-block-content" data-placeholder-tag="p" data-placeholder-text="Text" style="z-index: 10;">${content}</div></div>` +
+			'<div class="sl-block" data-block-type="code" data-name="code-84492d" style="width: 440px; height: 530px; left: 0px; top: 170px;" data-origin-id="efac41e44a2c2964a5d866b31b1ea194">\n' +
+			'    <div class="sl-block-content notranslate" data-highlight-theme="monokai" data-code-frame="none" style="z-index: 11;">\n' +
+			'        <pre style="font-size: 16px; line-height: 19px; tab-size: 4;"><code data-line-numbers=""></code></pre>\n' +
+			'    <div class="editing-ui sl-block-content-preview visible-in-preview"><pre style="font-size: 16px; line-height: 19px; tab-size: 4;"><code data-line-numbers="" class="hljs clojure"><table class="hljs-ln"><tbody><tr><td class="hljs-ln-numbers"><div class="hljs-ln-line hljs-ln-n" data-line-number="1"></div></td><td class="hljs-ln-code"><div class="hljs-ln-line"></div></td></tr></tbody></table></code></pre></div></div>\n' +
+			'</div>'
+		);
+	}
+
+	if (layout === LAYOUTS.MEDIA_BIG) {
+		return (
+			`<div class="sl-block" data-block-type="text" style="height: auto; width: 960px; left: 0px; top: 180px;" data-name="text-0ce863" data-origin-id="db493410d7fd4908bd79e05f010d193f"><div class="sl-block-content" data-placeholder-tag="p" data-placeholder-text="Text" style="z-index: 10;">${content}</div></div>` +
+			'<div class="sl-block" data-block-type="code" style="width: 960px; height: 420px; left: 0px; top: 280px;" data-name="code-2cbcfe" data-origin-id="92d1e1eab6d52e46d135c8bc07ce0cf2"><div class="sl-block-content notranslate" data-highlight-theme="monokai" data-code-frame="none" style="z-index: 12;"><pre style="font-size: 16px; line-height: 19px; tab-size: 4;"><code data-line-numbers=""></code></pre><div class="editing-ui sl-block-content-preview visible-in-preview"><pre style="font-size: 16px; line-height: 19px; tab-size: 4;"><code data-line-numbers="" class="hljs clojure"><table class="hljs-ln"><tbody><tr><td class="hljs-ln-numbers"><div class="hljs-ln-line hljs-ln-n" data-line-number="1"></div></td><td class="hljs-ln-code"><div class="hljs-ln-line"></div></td></tr></tbody></table></code></pre></div></div></div>'
+		);
+	}
+
+	if (layout === LAYOUTS.MEDIA_SMALL) {
+		return (
+			`<div class="sl-block" data-block-type="text" style="height: auto; width: 960px; left: 0px; top: 190px;" data-name="text-0ce863" data-origin-id="db493410d7fd4908bd79e05f010d193f"><div class="sl-block-content" data-placeholder-tag="p" data-placeholder-text="Text" style="z-index: 10;">${content}</div></div>` +
+			'<div class="sl-block" data-block-type="code" style="width: 960px; height: 280px; left: 0px; top: 420px;" data-name="code-2cbcfe" data-origin-id="92d1e1eab6d52e46d135c8bc07ce0cf2"><div class="sl-block-content notranslate" data-highlight-theme="monokai" data-code-frame="none" style="z-index: 12;"><pre style="font-size: 16px; line-height: 19px; tab-size: 4;"><code data-line-numbers=""></code></pre><div class="editing-ui sl-block-content-preview visible-in-preview"><pre style="font-size: 16px; line-height: 19px; tab-size: 4;"><code data-line-numbers="" class="hljs clojure"><table class="hljs-ln"><tbody><tr><td class="hljs-ln-numbers"><div class="hljs-ln-line hljs-ln-n" data-line-number="1"></div></td><td class="hljs-ln-code"><div class="hljs-ln-line"></div></td></tr></tbody></table></code></pre></div></div></div>'
+		);
+	}
+
+	if (layout === LAYOUTS.MEDIA) {
+		return '<div class="sl-block" data-block-type="code" style="width: 960px; height: 560px; left: 0px; top: 140px;" data-name="code-2cbcfe" data-origin-id="92d1e1eab6d52e46d135c8bc07ce0cf2"><div class="sl-block-content notranslate" data-highlight-theme="monokai" data-code-frame="none" style="z-index: 12;"><pre style="font-size: 16px; line-height: 19px; tab-size: 4;"><code data-line-numbers=""></code></pre><div class="editing-ui sl-block-content-preview visible-in-preview"><pre style="font-size: 16px; line-height: 19px; tab-size: 4;"><code data-line-numbers="" class="hljs clojure"><table class="hljs-ln"><tbody><tr><td class="hljs-ln-numbers"><div class="hljs-ln-line hljs-ln-n" data-line-number="1"></div></td><td class="hljs-ln-code"><div class="hljs-ln-line"></div></td></tr></tbody></table></code></pre></div></div></div>';
+	}
+
+	return `<div class="sl-block" data-block-type="text" data-name="text-ccbc0d" style="height: auto; width: 960px; left: 0px; top: 215px;" data-origin-id="c624ba8b801cc46fc3cdfd422ff6f5f2"><div class="sl-block-content" data-placeholder-tag="p" data-placeholder-text="Text" style="z-index: 10;">${content}</div></div>`;
+}
+
+function capitalizeFirstLetter(val) {
+	return String(val).charAt(0).toUpperCase() + String(val).slice(1);
+}
+
 (function () {
 	'use strict';
-	const LAYOUTS = {
-		MEDIA_RIGHT: 'media_right',
-		MEDIA_LEFT: 'media_left',
-		MEDIA_BIG: 'media_big',
-		MEDIA_SMALL: 'media_small',
-		MEDIA: 'media',
-		TEXT: 'text',
-	};
-
-	const tmChoiceDialogId = 'tm-choice-dialog';
-	const tmSelectDialogId = 'tm-select';
 
 	console.log('Tampermonkey script loaded: Paste Miro slide to slides.com');
 	document.addEventListener('keydown', async function (event) {
@@ -67,205 +268,8 @@
 			document.activeElement.dispatchEvent(pasteEvent);
 		}
 	});
-
-	async function convertMiroHtmlToSlideHtml(miroHTML) {
-		let layout;
-
-		const frameNameMatch = miroHTML.match(/<div><div>(.*?)<\/div>/);
-		if (frameNameMatch.length > 1) {
-			const frameName = frameNameMatch[1];
-			const layoutName = frameName.substring(frameName.indexOf('_') + 1);
-
-			if (Object.values(LAYOUTS).includes(layoutName)) {
-				layout = layoutName;
-			}
-		}
-
-		let slidesHTML = miroHTML
-			.replace(/<span data-meta[^>]*?><\/span>/, '') // remove miro meta
-			.replace(/<div><div>.*?<\/div>/, '') // remove frame name
-			.replace(/<div><div><div><div><a (.*?)<\/div><\/div><\/div>/, '') // remove sticky card with link
-			.replace(
-				/<div><div><div><div>(.*?)<\/div><\/div><\/div><\/div>/,
-				'<div class="sl-block" data-block-type="text" style="width: 960px; left: 0px; top: 0px; height: auto;" data-name="text-22f558" data-origin-id="cc355d151d11d9d136c98a23bee11868"><div class="sl-block-content" data-placeholder-tag="h1" style="z-index: 11;"><h2>$1</h2>',
-			); // header
-
-		if ((slidesHTML.match(/<div><div><div><div>/g) || []).length > 1) {
-			// Slide contains subheader
-			slidesHTML = slidesHTML.replace(
-				/<div><div><div><div>(.*?)<\/div><\/div><\/div><\/div>/,
-				(match, p1) => {
-					// make subheader parts correct size and replace "-" => "–"
-					const parts = p1.split(' - ').map((part) => part.trim());
-
-					if (parts.length <= 1) return `<p>${p1}</p>`;
-
-					// smaller sizes for subheader parts
-					let result = parts[0];
-					if (parts[1]) {
-						const separatorForNext = parts[2] ? ' – ' : '';
-						result += ` – <span style="font-size:0.7em">${capitalizeFirstLetter(
-							parts[1],
-						)}${separatorForNext}</span>`;
-					}
-					if (parts[2]) {
-						result += `<span style="font-size:0.5em">${capitalizeFirstLetter(
-							parts[2],
-						)}</span>`;
-					}
-
-					return `<p>${result}</p>`;
-				},
-			);
-		}
-
-		// correct divs closing
-		slidesHTML = slidesHTML
-			.replace(/(<\/(p|h2)>)<div>/, '$1</div></div><div>')
-			.replace(/<\/div>$/, '');
-
-		// pagination
-		slidesHTML = slidesHTML.replace(
-			/<div><div><div><div>(\d+\/\d+)<\/div><\/div><\/div><\/div>/,
-			'<div class="sl-block" data-block-type="text" style="height: auto; width: 960px; left: 0px; top: 630px;" data-name="text-2f292c" data-origin-id="9bc07b9d447bd7d371f1aa920fca09db"><div class="sl-block-content" data-placeholder-tag="p" data-placeholder-text="Text" style="z-index: 13;"><p><span style="font-size:0.7em">$1</span></p></div></div>',
-		);
-
-		if (!layout) {
-			if (slidesHTML.includes('LUCID') || slidesHTML.includes('MULTIMEDIUM')) {
-				layout = await pickLayout();
-				if (layout === null) {
-					alert('Coś poszło nie tak z wyborem layoutu');
-					return '';
-				}
-			} else {
-				layout = LAYOUTS.TEXT;
-			}
-		}
-
-		let content =
-			slidesHTML.match(
-				/<div><div><div><div>(?!(?:LUCID|MULTIMEDIUM)<\/div>)(.*?)<\/div><\/div><\/div><\/div>/,
-			)?.[0] ?? '';
-		content = content
-			.replace(/<div><div><div>(.*?)<\/div><\/div><\/div>/, '$1')
-			.replaceAll('<div>', '<p><span style="font-size:0.7em">')
-			.replaceAll('</div>', '</span></p>')
-			.replaceAll('</p><p><span style="font-size:0.7em"><br></span></p>', '<br>&nbsp;</p>') // unify line breaks
-			.replaceAll('</p><p>', '<br>')
-			.replaceAll('color: rgb(26, 26, 26);', ''); // remove black color;
-
-		slidesHTML = slidesHTML.replace(
-			/<div><div><div>(.*?)<\/div><\/div><\/div><\/div>/,
-			getContentHTMLForLayout(content, layout),
-		);
-
-		// remove Lucid text
-		slidesHTML = slidesHTML.replace(
-			/<div><div><div><div>(LUCID|MULTIMEDIUM)<\/div><\/div><\/div><\/div>/,
-			'',
-		);
-
-		// remove Jira card
-		slidesHTML = slidesHTML.replace(/<div><div><div>.*?<\/div><\/div><\/div>/, '');
-
-		return slidesHTML;
-	}
-
-	function pickLayout() {
-		let dialog = document.getElementById(tmChoiceDialogId);
-
-		if (!dialog) {
-			const optionsHtml = Object.entries(LAYOUTS)
-				.map(([key, value]) => `<option value="${value}">${key}</option>`)
-				.join('');
-
-			const html = `
-				  <dialog id="${tmChoiceDialogId}">
-					<form method="dialog">
-					  <p><strong>Wybierz layout:</strong></p>
-					  <select id="${tmSelectDialogId}">
-						${optionsHtml}
-					  </select>
-					  <div style="display: flex; flex-direction: row-reverse">
-						<button value="ok">OK</button>
-						<button value="cancel">Anuluj</button>
-					  </div>
-					</form>
-				  </dialog>
-				`;
-			document.body.insertAdjacentHTML('beforeend', html);
-			dialog = document.getElementById(tmChoiceDialogId);
-			dialog.addEventListener(
-				'keydown',
-				(e) => {
-					e.stopPropagation();
-				},
-				true,
-			);
-		}
-
-		dialog.showModal();
-		const select = document.getElementById(tmSelectDialogId);
-		select.focus();
-
-		return new Promise((resolve) => {
-			// Nasłuchujemy zamknięcia dialogu
-			dialog.addEventListener(
-				'close',
-				() => {
-					if (dialog.returnValue === 'ok') {
-						resolve(select.value);
-					} else {
-						resolve(null);
-					}
-				},
-				{ once: true },
-			);
-		});
-	}
-
-	function getContentHTMLForLayout(content, layout) {
-		if (layout === LAYOUTS.MEDIA_RIGHT) {
-			return (
-				`<div class="sl-block" data-block-type="text" data-name="text-ccbc0d" style="height: auto; width: 480px; left: 0px; top: 202px;" data-origin-id="873f32179cf02c875dbd428784327772"><div class="sl-block-content" data-placeholder-tag="p" data-placeholder-text="Text" style="z-index: 11;">${content}</div></div>` +
-				'<div class="sl-block" data-block-type="code" data-name="code-84492d" style="width: 440px; height: 530px; left: 520px; top: 170px;" data-origin-id="9490ec45fa9f1402cde71bf5bc6c5c46"><div class="sl-block-content notranslate" data-highlight-theme="monokai" data-code-frame="none" style="z-index: 12;">\n' +
-				'        <pre style="font-size: 16px; line-height: 19px; tab-size: 4;"><code data-line-numbers=""></code></pre>\n' +
-				'    <div class="editing-ui sl-block-content-preview visible-in-preview"><pre style="font-size: 16px; line-height: 19px; tab-size: 4;"><code data-line-numbers="" class="hljs clojure"><table class="hljs-ln"><tbody><tr><td class="hljs-ln-numbers"><div class="hljs-ln-line hljs-ln-n" data-line-number="1"></div></td><td class="hljs-ln-code"><div class="hljs-ln-line"></div></td></tr></tbody></table></code></pre></div></div>'
-			);
-		}
-		if (layout === LAYOUTS.MEDIA_LEFT) {
-			return (
-				`<div class="sl-block" data-block-type="text" data-name="text-ccbc0d" style="height: auto; width: 480px; left: 480px; top: 190px;" data-origin-id="8b1922e953fa7007fc859482834c569a"><div class="sl-block-content" data-placeholder-tag="p" data-placeholder-text="Text" style="z-index: 10;">${content}</div></div>` +
-				'<div class="sl-block" data-block-type="code" data-name="code-84492d" style="width: 440px; height: 530px; left: 0px; top: 170px;" data-origin-id="efac41e44a2c2964a5d866b31b1ea194">\n' +
-				'    <div class="sl-block-content notranslate" data-highlight-theme="monokai" data-code-frame="none" style="z-index: 11;">\n' +
-				'        <pre style="font-size: 16px; line-height: 19px; tab-size: 4;"><code data-line-numbers=""></code></pre>\n' +
-				'    <div class="editing-ui sl-block-content-preview visible-in-preview"><pre style="font-size: 16px; line-height: 19px; tab-size: 4;"><code data-line-numbers="" class="hljs clojure"><table class="hljs-ln"><tbody><tr><td class="hljs-ln-numbers"><div class="hljs-ln-line hljs-ln-n" data-line-number="1"></div></td><td class="hljs-ln-code"><div class="hljs-ln-line"></div></td></tr></tbody></table></code></pre></div></div>\n' +
-				'</div>'
-			);
-		}
-
-		if (layout === LAYOUTS.MEDIA_BIG) {
-			return (
-				`<div class="sl-block" data-block-type="text" style="height: auto; width: 960px; left: 0px; top: 180px;" data-name="text-0ce863" data-origin-id="db493410d7fd4908bd79e05f010d193f"><div class="sl-block-content" data-placeholder-tag="p" data-placeholder-text="Text" style="z-index: 10;">${content}</div></div>` +
-				'<div class="sl-block" data-block-type="code" style="width: 960px; height: 420px; left: 0px; top: 280px;" data-name="code-2cbcfe" data-origin-id="92d1e1eab6d52e46d135c8bc07ce0cf2"><div class="sl-block-content notranslate" data-highlight-theme="monokai" data-code-frame="none" style="z-index: 12;"><pre style="font-size: 16px; line-height: 19px; tab-size: 4;"><code data-line-numbers=""></code></pre><div class="editing-ui sl-block-content-preview visible-in-preview"><pre style="font-size: 16px; line-height: 19px; tab-size: 4;"><code data-line-numbers="" class="hljs clojure"><table class="hljs-ln"><tbody><tr><td class="hljs-ln-numbers"><div class="hljs-ln-line hljs-ln-n" data-line-number="1"></div></td><td class="hljs-ln-code"><div class="hljs-ln-line"></div></td></tr></tbody></table></code></pre></div></div></div>'
-			);
-		}
-
-		if (layout === LAYOUTS.MEDIA_SMALL) {
-			return (
-				`<div class="sl-block" data-block-type="text" style="height: auto; width: 960px; left: 0px; top: 190px;" data-name="text-0ce863" data-origin-id="db493410d7fd4908bd79e05f010d193f"><div class="sl-block-content" data-placeholder-tag="p" data-placeholder-text="Text" style="z-index: 10;">${content}</div></div>` +
-				'<div class="sl-block" data-block-type="code" style="width: 960px; height: 280px; left: 0px; top: 420px;" data-name="code-2cbcfe" data-origin-id="92d1e1eab6d52e46d135c8bc07ce0cf2"><div class="sl-block-content notranslate" data-highlight-theme="monokai" data-code-frame="none" style="z-index: 12;"><pre style="font-size: 16px; line-height: 19px; tab-size: 4;"><code data-line-numbers=""></code></pre><div class="editing-ui sl-block-content-preview visible-in-preview"><pre style="font-size: 16px; line-height: 19px; tab-size: 4;"><code data-line-numbers="" class="hljs clojure"><table class="hljs-ln"><tbody><tr><td class="hljs-ln-numbers"><div class="hljs-ln-line hljs-ln-n" data-line-number="1"></div></td><td class="hljs-ln-code"><div class="hljs-ln-line"></div></td></tr></tbody></table></code></pre></div></div></div>'
-			);
-		}
-
-		if (layout === LAYOUTS.MEDIA) {
-			return '<div class="sl-block" data-block-type="code" style="width: 960px; height: 560px; left: 0px; top: 140px;" data-name="code-2cbcfe" data-origin-id="92d1e1eab6d52e46d135c8bc07ce0cf2"><div class="sl-block-content notranslate" data-highlight-theme="monokai" data-code-frame="none" style="z-index: 12;"><pre style="font-size: 16px; line-height: 19px; tab-size: 4;"><code data-line-numbers=""></code></pre><div class="editing-ui sl-block-content-preview visible-in-preview"><pre style="font-size: 16px; line-height: 19px; tab-size: 4;"><code data-line-numbers="" class="hljs clojure"><table class="hljs-ln"><tbody><tr><td class="hljs-ln-numbers"><div class="hljs-ln-line hljs-ln-n" data-line-number="1"></div></td><td class="hljs-ln-code"><div class="hljs-ln-line"></div></td></tr></tbody></table></code></pre></div></div></div>';
-		}
-
-		return `<div class="sl-block" data-block-type="text" data-name="text-ccbc0d" style="height: auto; width: 960px; left: 0px; top: 215px;" data-origin-id="c624ba8b801cc46fc3cdfd422ff6f5f2"><div class="sl-block-content" data-placeholder-tag="p" data-placeholder-text="Text" style="z-index: 10;">${content}</div></div>`;
-	}
-
-	function capitalizeFirstLetter(val) {
-		return String(val).charAt(0).toUpperCase() + String(val).slice(1);
-	}
 })();
+
+if (typeof exports !== 'undefined') {
+	module.exports = { convertMiroHtmlToSlideHtml };
+}

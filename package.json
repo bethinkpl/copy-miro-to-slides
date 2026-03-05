@@ -1,0 +1,24 @@
+{
+  "name": "copy-miro-to-slides",
+  "version": "1.0.0",
+  "description": "",
+  "main": "miro-to-slides.js",
+  "scripts": {
+    "test": "vitest"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bethinkpl/copy-miro-to-slides.git"
+  },
+  "keywords": [],
+  "author": "",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/bethinkpl/copy-miro-to-slides/issues"
+  },
+  "homepage": "https://github.com/bethinkpl/copy-miro-to-slides#readme",
+  "devDependencies": {
+    "jsdom": "^28.1.0",
+    "vitest": "^4.0.18"
+  }
+}
