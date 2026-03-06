@@ -42,6 +42,12 @@ async function convertMiroHtmlToSlideHtml(miroHTML) {
 			'<div class="sl-block" data-block-type="text" style="width: 960px; left: 0px; top: 0px; height: auto;" data-name="text-22f558" data-origin-id="cc355d151d11d9d136c98a23bee11868"><div class="sl-block-content" data-placeholder-tag="h1" style="z-index: 11;"><h2>$1</h2>',
 		); // header
 
+	// pagination
+	slidesHTML = slidesHTML.replace(
+		/<div><div><div><div>(\d+\/\d+)<\/div><\/div><\/div><\/div>/,
+		'<div class="sl-block" data-block-type="text" style="height: auto; width: 960px; left: 0px; top: 630px;" data-name="text-2f292c" data-origin-id="9bc07b9d447bd7d371f1aa920fca09db"><div class="sl-block-content" data-placeholder-tag="p" data-placeholder-text="Text" style="z-index: 13;"><p><span style="font-size:0.7em">$1</span></p></div></div>',
+	);
+
 	if ((slidesHTML.match(/<div><div><div><div>/g) || []).length > 1) {
 		// Slide contains subheader
 		slidesHTML = slidesHTML.replace(
@@ -76,11 +82,6 @@ async function convertMiroHtmlToSlideHtml(miroHTML) {
 		.replace(/(<\/(p|h2)>)<div>/, '$1</div></div><div>')
 		.replace(/<\/div>$/, '');
 
-	// pagination
-	slidesHTML = slidesHTML.replace(
-		/<div><div><div><div>(\d+\/\d+)<\/div><\/div><\/div><\/div>/,
-		'<div class="sl-block" data-block-type="text" style="height: auto; width: 960px; left: 0px; top: 630px;" data-name="text-2f292c" data-origin-id="9bc07b9d447bd7d371f1aa920fca09db"><div class="sl-block-content" data-placeholder-tag="p" data-placeholder-text="Text" style="z-index: 13;"><p><span style="font-size:0.7em">$1</span></p></div></div>',
-	);
 
 	if (!layout) {
 		if (slidesHTML.includes('LUCID') || slidesHTML.includes('MULTIMEDIUM')) {
