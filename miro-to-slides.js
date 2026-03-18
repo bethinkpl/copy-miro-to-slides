@@ -26,7 +26,7 @@ async function convertMiroHtmlToSlideHtml(miroHTML) {
 
 	const frameNameMatch = miroHTML.match(/<div><div>slide_(.*?)<\/div>/i);
 
-	if (frameNameMatch.length > 1) {
+	if (frameNameMatch?.length > 1) {
 		const layoutName = frameNameMatch[1];
 		if (Object.values(LAYOUTS).includes(layoutName)) {
 			layout = layoutName;
@@ -35,6 +35,7 @@ async function convertMiroHtmlToSlideHtml(miroHTML) {
 
 	let slidesHTML = miroHTML
 		.replace(/<span data-meta.*?><\/span>/, '') // remove miro meta
+		.replace(/<div><div>.*?slajd.*?<\/div>/i, '') // remove frame name
 		.replace(/<div><div>slide_.*?<\/div>/i, '') // remove frame name
 		.replace(/<div><div><div><div><a (.*?)<\/div><\/div><\/div>/, '') // remove sticky card with link
 		.replace(
@@ -120,6 +121,12 @@ async function convertMiroHtmlToSlideHtml(miroHTML) {
 
 	// remove Jira card
 	slidesHTML = slidesHTML.replace(/<div><div><div>.*?<\/div><\/div><\/div>/, '');
+
+	// remove styles that break dark theme
+	slidesHTML = slidesHTML
+		.replaceAll(/color:rgb\(0,0,0\);?/g, '')
+		.replaceAll(/background-color:rgb\(255,255,255\);?/g, '')
+	;
 
 	return slidesHTML;
 }
