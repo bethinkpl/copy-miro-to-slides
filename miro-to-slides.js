@@ -24,7 +24,7 @@ const tmSelectDialogId = 'tm-select';
 async function convertMiroHtmlToSlideHtml(miroHTML) {
 	let layout;
 
-	const frameNameMatch = miroHTML.match(/<div><div>slide_(.*?)<\/div>/i);
+	const frameNameMatch = miroHTML.match(/<div><div>(?:(?:Kopia etykiety|Copy of)\s+)*slide_(.*?)<\/div>/i);
 
 	if (frameNameMatch?.length > 1) {
 		const layoutName = frameNameMatch[1];
@@ -36,7 +36,7 @@ async function convertMiroHtmlToSlideHtml(miroHTML) {
 	let slidesHTML = miroHTML
 		.replace(/<span data-meta.*?><\/span>/, '') // remove miro meta
 		.replace(/<div><div>.*?slajd.*?<\/div>/i, '') // remove frame name
-		.replace(/<div><div>slide_.*?<\/div>/i, '') // remove frame name
+		.replace(/<div><div>(?:(?:Kopia etykiety|Copy of)\s+)*slide_.*?<\/div>/i, '') // remove frame name
 		.replace(/<div><div><div><div><a (.*?)<\/div><\/div><\/div>/, '') // remove sticky card with link
 		.replace(
 			/(?:<div>)?<div><div><div>(.*?)<\/div><\/div><\/div>(?:<\/div>)?/,
@@ -55,7 +55,7 @@ async function convertMiroHtmlToSlideHtml(miroHTML) {
 			/<div><div><div><div>(.*?)<\/div><\/div><\/div><\/div>/,
 			(match, p1) => {
 				// make subheader parts correct size and replace "-" => "–"
-				const parts = p1.split(' - ').map((part) => part.trim());
+				const parts = p1.split(/ [-–] /).map((part) => part.trim());
 
 				if (parts.length <= 1) return `<p>${p1}</p>`;
 
@@ -106,7 +106,8 @@ async function convertMiroHtmlToSlideHtml(miroHTML) {
 		.replaceAll('</div>', '</span></p>')
 		.replaceAll('</p><p><span style="font-size:0.7em"><br></span></p>', '<br>&nbsp;</p>') // unify line breaks
 		.replaceAll('</p><p>', '<br>')
-		.replaceAll('color: rgb(26, 26, 26);', ''); // remove black color;
+		.replaceAll('color: rgb(26, 26, 26);', '') // remove black color
+		.replace(/<strong style="([^"]*)">(.*?)<\/strong>/g, '<strong><span style="$1">$2</span></strong>'); // move inline styles from <strong> to nested <span>
 
 	slidesHTML = slidesHTML.replace(
 		/<div><div><div>(.*?)<\/div><\/div><\/div><\/div>/,
