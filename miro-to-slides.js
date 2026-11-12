@@ -129,14 +129,9 @@ async function convertMiroHtmlToSlideHtml(miroHTML) {
 	// remove Jira card
 	slidesHTML = slidesHTML.replace(/<div><div><div>.*?<\/div><\/div><\/div>/, '');
 
-	// remove styles that break dark theme
-	// black / near-black text color (e.g. #000000, #1A1A1A) should fall back to automatic color
-	const blackColor = String.raw`(?:rgb\(\s*0\s*,\s*0\s*,\s*0\s*\)|rgb\(\s*26\s*,\s*26\s*,\s*26\s*\)|#000(?:000)?|#1a1a1a|black)`;
-	const whiteColor = String.raw`(?:rgb\(\s*255\s*,\s*255\s*,\s*255\s*\)|#fff(?:fff)?|white)`;
-	slidesHTML = slidesHTML
-		.replaceAll(new RegExp(String.raw`(?<![-\w])color\s*:\s*${blackColor}\s*;?`, 'gi'), '')
-		.replaceAll(new RegExp(String.raw`background-color\s*:\s*${whiteColor}\s*;?`, 'gi'), '')
-	;
+	// remove styles that break dark theme: near-black / near-white colors (e.g. #000000, #1A1A1A, #1A1B1E)
+	// should fall back to automatic color
+	slidesHTML = removeNearBlackOrWhiteColors(slidesHTML);
 
 	return slidesHTML;
 }
@@ -235,6 +230,60 @@ function getContentHTMLForLayout(content, layout) {
 	return `<div class="sl-block" data-block-type="text" data-name="text-ccbc0d" style="height: auto; width: 960px; left: 0px; top: 215px;" data-origin-id="c624ba8b801cc46fc3cdfd422ff6f5f2"><div class="sl-block-content" data-placeholder-tag="p" data-placeholder-text="Text" style="z-index: 10;">${content}</div></div>`;
 }
 
+// Removes `color` / `background-color` declarations with near-black or near-white values
+// from inline styles, keeping the formatting of other declarations untouched.
+function removeNearBlackOrWhiteColors(html) {
+	return html.replace(/style=(["'])(.*?)\1/g, (match, quote, style) => {
+		const declarations = style
+			.split(/(?<=;)/)
+			.filter((declaration) => {
+				const [, property, value] =
+					declaration.match(/^\s*(color|background-color)\s*:\s*(.*?)\s*;?\s*$/i) ?? [];
+
+				return !property || !isNearBlackOrWhiteColor(value);
+			});
+
+		return `style=${quote}${declarations.join('')}${quote}`;
+	});
+}
+
+// Based on isNearBlackOrWhiteColor from wnl-platform resources/assets/js/utils/colors.ts
+// A channel-based band rather than luminance: luminance would classify saturated
+// colors like #ffff00 as "near white" and #ff0000 as "near black".
+const NEAR_BLACK_MAX_CHANNEL = 0x44;
+const NEAR_WHITE_MIN_CHANNEL = 0xd0;
+
+// Supports hex (#rgb, #rgba, #rrggbb, #rrggbbaa) and rgb()/rgba() colors
+function colorToChannels(color) {
+	const normalized = color.trim().toLowerCase();
+
+	const hex = normalized.match(/^#([\da-f]{3,4}|[\da-f]{6}|[\da-f]{8})$/);
+	if (hex) {
+		const digits = hex[1].length <= 4 ? hex[1].replace(/./g, '$&$&') : hex[1];
+		return [0, 2, 4].map((i) => parseInt(digits.slice(i, i + 2), 16));
+	}
+
+	const rgb = normalized.match(/^rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)/);
+	return rgb ? rgb.slice(1, 4).map(Number) : null;
+}
+
+/**
+ * Tells whether a CSS color sits so close to black or white that it only reads
+ * well against one theme's background.
+ */
+function isNearBlackOrWhiteColor(color) {
+	const channels = colorToChannels(color);
+
+	if (!channels) {
+		return false;
+	}
+
+	return (
+		channels.every((channel) => channel <= NEAR_BLACK_MAX_CHANNEL) ||
+		channels.every((channel) => channel >= NEAR_WHITE_MIN_CHANNEL)
+	);
+}
+
 function capitalizeFirstLetter(val) {
 	return String(val).charAt(0).toUpperCase() + String(val).slice(1);
 }
@@ -289,5 +338,5 @@ function capitalizeFirstLetter(val) {
 })();
 
 if (typeof exports !== 'undefined') {
-	module.exports = { convertMiroHtmlToSlideHtml };
+	module.exports = { convertMiroHtmlToSlideHtml, isNearBlackOrWhiteColor };
 }
