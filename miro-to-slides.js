@@ -227,7 +227,7 @@ function getContentHTMLForLayout(content, layout) {
 		return '<div class="sl-block" data-block-type="code" style="width: 960px; height: 560px; left: 0px; top: 140px;" data-name="code-2cbcfe" data-origin-id="92d1e1eab6d52e46d135c8bc07ce0cf2"><div class="sl-block-content notranslate" data-highlight-theme="monokai" data-code-frame="none" style="z-index: 12;"><pre style="font-size: 16px; line-height: 19px; tab-size: 4;"><code data-line-numbers=""></code></pre><div class="editing-ui sl-block-content-preview visible-in-preview"><pre style="font-size: 16px; line-height: 19px; tab-size: 4;"><code data-line-numbers="" class="hljs clojure"><table class="hljs-ln"><tbody><tr><td class="hljs-ln-numbers"><div class="hljs-ln-line hljs-ln-n" data-line-number="1"></div></td><td class="hljs-ln-code"><div class="hljs-ln-line"></div></td></tr></tbody></table></code></pre></div></div></div>';
 	}
 
-	return `<div class="sl-block" data-block-type="text" data-name="text-ccbc0d" style="height: auto; width: 960px; left: 0px; top: 215px;" data-origin-id="c624ba8b801cc46fc3cdfd422ff6f5f2"><div class="sl-block-content" data-placeholder-tag="p" data-placeholder-text="Text" style="z-index: 10;">${content}</div></div>`;
+	return `<div class="sl-block" data-block-type="text" data-name="text-ccbc0d" style="height: auto; width: 960px; left: 0px; top: 190px;" data-origin-id="c624ba8b801cc46fc3cdfd422ff6f5f2"><div class="sl-block-content" data-placeholder-tag="p" data-placeholder-text="Text" style="z-index: 10;">${content}</div></div>`;
 }
 
 // Removes `color` / `background-color` declarations with near-black or near-white values
