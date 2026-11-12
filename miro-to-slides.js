@@ -44,6 +44,8 @@ async function convertMiroHtmlToSlideHtml(miroHTML) {
 		); // header
 
 	// pagination
+	// skip placeholder pagination left from the template
+	slidesHTML = slidesHTML.replace(/<div><div><div><div>0\/0<\/div><\/div><\/div><\/div>/, '');
 	slidesHTML = slidesHTML.replace(
 		/<div><div><div><div>(\d+\/\d+)<\/div><\/div><\/div><\/div>/,
 		'<div class="sl-block" data-block-type="text" style="height: auto; width: 960px; left: 0px; top: 630px;" data-name="text-2f292c" data-origin-id="9bc07b9d447bd7d371f1aa920fca09db"><div class="sl-block-content" data-placeholder-tag="p" data-placeholder-text="Text" style="z-index: 13;"><p><span style="font-size:0.7em">$1</span></p></div></div>',
