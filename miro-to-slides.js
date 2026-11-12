@@ -19,6 +19,9 @@ const LAYOUTS = {
 	TEXT: 'text',
 };
 
+// Miro line (<div>) containing only whitespace, <br> or inline tags without text
+const EMPTY_LINE = String.raw`<div>(?:\s|&nbsp;|<br\s*\/?>|<(?!\/?div\b)[^>]*>)*<\/div>`;
+
 const tmChoiceDialogId = 'tm-choice-dialog';
 const tmSelectDialogId = 'tm-select';
 async function convertMiroHtmlToSlideHtml(miroHTML) {
@@ -104,6 +107,8 @@ async function convertMiroHtmlToSlideHtml(miroHTML) {
 		)?.[0] ?? '';
 	content = content
 		.replace(/<div><div><div>(.*?)<\/div><\/div><\/div>/, '$1')
+		.replace(new RegExp(`^(?:${EMPTY_LINE})+`), '') // ignore empty lines before text
+		.replace(new RegExp(`(?:${EMPTY_LINE})+$`), '') // ignore empty lines after text
 		.replaceAll('<div>', '<p><span style="font-size:0.7em">')
 		.replaceAll('</div>', '</span></p>')
 		.replaceAll('</p><p><span style="font-size:0.7em"><br></span></p>', '<br>&nbsp;</p>') // unify line breaks
