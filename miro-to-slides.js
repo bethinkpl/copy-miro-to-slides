@@ -108,7 +108,6 @@ async function convertMiroHtmlToSlideHtml(miroHTML) {
 		.replaceAll('</div>', '</span></p>')
 		.replaceAll('</p><p><span style="font-size:0.7em"><br></span></p>', '<br>&nbsp;</p>') // unify line breaks
 		.replaceAll('</p><p>', '<br>')
-		.replaceAll('color: rgb(26, 26, 26);', '') // remove black color
 		.replace(/<strong style="([^"]*)">(.*?)<\/strong>/g, '<strong><span style="$1">$2</span></strong>'); // move inline styles from <strong> to nested <span>
 
 	slidesHTML = slidesHTML.replace(
@@ -126,9 +125,12 @@ async function convertMiroHtmlToSlideHtml(miroHTML) {
 	slidesHTML = slidesHTML.replace(/<div><div><div>.*?<\/div><\/div><\/div>/, '');
 
 	// remove styles that break dark theme
+	// black / near-black text color (e.g. #000000, #1A1A1A) should fall back to automatic color
+	const blackColor = String.raw`(?:rgb\(\s*0\s*,\s*0\s*,\s*0\s*\)|rgb\(\s*26\s*,\s*26\s*,\s*26\s*\)|#000(?:000)?|#1a1a1a|black)`;
+	const whiteColor = String.raw`(?:rgb\(\s*255\s*,\s*255\s*,\s*255\s*\)|#fff(?:fff)?|white)`;
 	slidesHTML = slidesHTML
-		.replaceAll(/color:rgb\(0,0,0\);?/g, '')
-		.replaceAll(/background-color:rgb\(255,255,255\);?/g, '')
+		.replaceAll(new RegExp(String.raw`(?<![-\w])color\s*:\s*${blackColor}\s*;?`, 'gi'), '')
+		.replaceAll(new RegExp(String.raw`background-color\s*:\s*${whiteColor}\s*;?`, 'gi'), '')
 	;
 
 	return slidesHTML;
