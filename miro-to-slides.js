@@ -258,6 +258,13 @@ function normalizeFrameStructure(html) {
 		}
 	}
 
+	// Elements copied without their frame are wrapped in a single <div> with no frame name:
+	//   <div><div><div><div><div>header</div></div></div></div>...</div>
+	// Drop the wrapper's opening tag, as frame name removal does for regular slides.
+	if (elements.length === 1 && elements[0].startsWith('<div><div><div><div><div>')) {
+		return html.slice(0, start) + html.slice(start + '<div>'.length);
+	}
+
 	const [frame, ...children] = elements;
 	if (children.length === 0 || !/^<div><div>[^<]*<\/div><\/div>$/.test(frame)) return html;
 
