@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Paste Miro slide to slides.com
 // @namespace    http://tampermonkey.net/
-// @version      2026-03-06
+// @version      2026-11-13
 // @description  Converts Miro HTML to slides.com supproted HTML
 // @author       Bethink
 // @match        *://*.slides.com/*
