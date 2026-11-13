@@ -27,6 +27,8 @@ const tmSelectDialogId = 'tm-select';
 async function convertMiroHtmlToSlideHtml(miroHTML) {
 	let layout;
 
+	miroHTML = normalizeFrameStructure(miroHTML);
+
 	const frameNameMatch = miroHTML.match(/<div><div>(?:(?:Kopia etykiety|Copy of)\s+)*slide_(.*?)<\/div>/i);
 
 	if (frameNameMatch?.length > 1) {
@@ -228,6 +230,38 @@ function getContentHTMLForLayout(content, layout) {
 	}
 
 	return `<div class="sl-block" data-block-type="text" data-name="text-ccbc0d" style="height: auto; width: 960px; left: 0px; top: 190px;" data-origin-id="c624ba8b801cc46fc3cdfd422ff6f5f2"><div class="sl-block-content" data-placeholder-tag="p" data-placeholder-text="Text" style="z-index: 10;">${content}</div></div>`;
+}
+
+// Miro sometimes puts frame elements next to the frame instead of inside it, each one div level shallower:
+//   <div><div>Slide_text</div></div>
+//   <div><div><div>header</div></div></div>
+// This converts it to the nested structure the rest of the script expects:
+//   <div><div>Slide_text</div><div><div><div><div>header</div></div></div></div></div>
+function normalizeFrameStructure(html) {
+	const start = html.indexOf('<div');
+	if (start === -1) return html;
+
+	const elements = [];
+	const tagRegex = /<div\b[^>]*>|<\/div>/g;
+	tagRegex.lastIndex = start;
+	let depth = 0;
+	let elementStart = start;
+	let tag;
+	while ((tag = tagRegex.exec(html))) {
+		if (tag[0] === '</div>') {
+			depth--;
+			if (depth === 0) elements.push(html.slice(elementStart, tagRegex.lastIndex));
+		} else {
+			if (depth === 0) elementStart = tag.index;
+			depth++;
+		}
+	}
+
+	const [frame, ...children] = elements;
+	if (children.length === 0 || !/^<div><div>[^<]*<\/div><\/div>$/.test(frame)) return html;
+
+	const frameName = frame.slice('<div>'.length, -'</div>'.length);
+	return `${html.slice(0, start)}<div>${frameName}${children.map((child) => `<div>${child}</div>`).join('')}</div>`;
 }
 
 // Removes `color` / `background-color` declarations with near-black or near-white values
