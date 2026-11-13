@@ -20,7 +20,7 @@ const LAYOUTS = {
 };
 
 // Miro line (<div>) containing only whitespace, <br> or inline tags without text
-const EMPTY_LINE = String.raw`<div>(?:\s|&nbsp;|<br\s*\/?>|<(?!\/?div\b)[^>]*>)*<\/div>`;
+const EMPTY_LINE = String.raw`<div>(?:\s|&nbsp;|<(?!\/?div\b)[^>]*>)*<\/div>`;
 
 const tmChoiceDialogId = 'tm-choice-dialog';
 const tmSelectDialogId = 'tm-select';
@@ -276,7 +276,7 @@ function normalizeFrameStructure(html) {
 // Removes `color` / `background-color` declarations with near-black or near-white values
 // from inline styles, keeping the formatting of other declarations untouched.
 function removeNearBlackOrWhiteColors(html) {
-	return html.replace(/style=(["'])(.*?)\1/g, (match, quote, style) => {
+	return html.replace(/(\s)style=(["'])(.*?)\2/g, (match, space, quote, style) => {
 		const declarations = style
 			.split(/(?<=;)/)
 			.filter((declaration) => {
@@ -286,7 +286,7 @@ function removeNearBlackOrWhiteColors(html) {
 				return !property || !isNearBlackOrWhiteColor(value);
 			});
 
-		return `style=${quote}${declarations.join('')}${quote}`;
+		return `${space}style=${quote}${declarations.join('')}${quote}`;
 	});
 }
 
