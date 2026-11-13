@@ -198,7 +198,8 @@ function getContentHTMLForLayout(content, layout) {
 			`<div class="sl-block" data-block-type="text" data-name="text-ccbc0d" style="height: auto; width: 480px; left: 0px; top: 202px;" data-origin-id="873f32179cf02c875dbd428784327772"><div class="sl-block-content" data-placeholder-tag="p" data-placeholder-text="Text" style="z-index: 11;">${content}</div></div>` +
 			'<div class="sl-block" data-block-type="code" data-name="code-84492d" style="width: 440px; height: 530px; left: 520px; top: 170px;" data-origin-id="9490ec45fa9f1402cde71bf5bc6c5c46"><div class="sl-block-content notranslate" data-highlight-theme="monokai" data-code-frame="none" style="z-index: 12;">\n' +
 			'        <pre style="font-size: 16px; line-height: 19px; tab-size: 4;"><code data-line-numbers=""></code></pre>\n' +
-			'    <div class="editing-ui sl-block-content-preview visible-in-preview"><pre style="font-size: 16px; line-height: 19px; tab-size: 4;"><code data-line-numbers="" class="hljs clojure"><table class="hljs-ln"><tbody><tr><td class="hljs-ln-numbers"><div class="hljs-ln-line hljs-ln-n" data-line-number="1"></div></td><td class="hljs-ln-code"><div class="hljs-ln-line"></div></td></tr></tbody></table></code></pre></div></div>'
+			'    <div class="editing-ui sl-block-content-preview visible-in-preview"><pre style="font-size: 16px; line-height: 19px; tab-size: 4;"><code data-line-numbers="" class="hljs clojure"><table class="hljs-ln"><tbody><tr><td class="hljs-ln-numbers"><div class="hljs-ln-line hljs-ln-n" data-line-number="1"></div></td><td class="hljs-ln-code"><div class="hljs-ln-line"></div></td></tr></tbody></table></code></pre></div></div>' +
+			'</div>'
 		);
 	}
 	if (layout === LAYOUTS.MEDIA_LEFT) {
