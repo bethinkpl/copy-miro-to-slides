@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Paste Miro slide to slides.com
 // @namespace    http://tampermonkey.net/
-// @version      2026-03-06
+// @version      2026-11-13
 // @description  Converts Miro HTML to slides.com supproted HTML
 // @author       Bethink
 // @match        *://*.slides.com/*
@@ -19,10 +19,15 @@ const LAYOUTS = {
 	TEXT: 'text',
 };
 
+// Miro line (<div>) containing only whitespace, <br> or inline tags without text
+const EMPTY_LINE = String.raw`<div>(?:\s|&nbsp;|<(?!\/?div\b)[^>]*>)*<\/div>`;
+
 const tmChoiceDialogId = 'tm-choice-dialog';
 const tmSelectDialogId = 'tm-select';
 async function convertMiroHtmlToSlideHtml(miroHTML) {
 	let layout;
+
+	miroHTML = normalizeFrameStructure(miroHTML);
 
 	const frameNameMatch = miroHTML.match(/<div><div>(?:(?:Kopia etykiety|Copy of)\s+)*slide_(.*?)<\/div>/i);
 
@@ -44,6 +49,8 @@ async function convertMiroHtmlToSlideHtml(miroHTML) {
 		); // header
 
 	// pagination
+	// skip placeholder pagination left from the template
+	slidesHTML = slidesHTML.replace(/<div><div><div><div>0\/0<\/div><\/div><\/div><\/div>/, '');
 	slidesHTML = slidesHTML.replace(
 		/<div><div><div><div>(\d+\/\d+)<\/div><\/div><\/div><\/div>/,
 		'<div class="sl-block" data-block-type="text" style="height: auto; width: 960px; left: 0px; top: 630px;" data-name="text-2f292c" data-origin-id="9bc07b9d447bd7d371f1aa920fca09db"><div class="sl-block-content" data-placeholder-tag="p" data-placeholder-text="Text" style="z-index: 13;"><p><span style="font-size:0.7em">$1</span></p></div></div>',
@@ -102,11 +109,13 @@ async function convertMiroHtmlToSlideHtml(miroHTML) {
 		)?.[0] ?? '';
 	content = content
 		.replace(/<div><div><div>(.*?)<\/div><\/div><\/div>/, '$1')
+		.replace(/<br\s*\/>/g, '<br>') // Miro uses both <br> and <br />
+		.replace(new RegExp(`^(?:${EMPTY_LINE})+`), '') // ignore empty lines before text
+		.replace(new RegExp(`(?:${EMPTY_LINE})+$`), '') // ignore empty lines after text
 		.replaceAll('<div>', '<p><span style="font-size:0.7em">')
 		.replaceAll('</div>', '</span></p>')
 		.replaceAll('</p><p><span style="font-size:0.7em"><br></span></p>', '<br>&nbsp;</p>') // unify line breaks
 		.replaceAll('</p><p>', '<br>')
-		.replaceAll('color: rgb(26, 26, 26);', '') // remove black color
 		.replace(/<strong style="([^"]*)">(.*?)<\/strong>/g, '<strong><span style="$1">$2</span></strong>'); // move inline styles from <strong> to nested <span>
 
 	slidesHTML = slidesHTML.replace(
@@ -123,11 +132,9 @@ async function convertMiroHtmlToSlideHtml(miroHTML) {
 	// remove Jira card
 	slidesHTML = slidesHTML.replace(/<div><div><div>.*?<\/div><\/div><\/div>/, '');
 
-	// remove styles that break dark theme
-	slidesHTML = slidesHTML
-		.replaceAll(/color:rgb\(0,0,0\);?/g, '')
-		.replaceAll(/background-color:rgb\(255,255,255\);?/g, '')
-	;
+	// remove styles that break dark theme: near-black / near-white colors (e.g. #000000, #1A1A1A, #1A1B1E)
+	// should fall back to automatic color
+	slidesHTML = removeNearBlackOrWhiteColors(slidesHTML);
 
 	return slidesHTML;
 }
@@ -191,7 +198,8 @@ function getContentHTMLForLayout(content, layout) {
 			`<div class="sl-block" data-block-type="text" data-name="text-ccbc0d" style="height: auto; width: 480px; left: 0px; top: 202px;" data-origin-id="873f32179cf02c875dbd428784327772"><div class="sl-block-content" data-placeholder-tag="p" data-placeholder-text="Text" style="z-index: 11;">${content}</div></div>` +
 			'<div class="sl-block" data-block-type="code" data-name="code-84492d" style="width: 440px; height: 530px; left: 520px; top: 170px;" data-origin-id="9490ec45fa9f1402cde71bf5bc6c5c46"><div class="sl-block-content notranslate" data-highlight-theme="monokai" data-code-frame="none" style="z-index: 12;">\n' +
 			'        <pre style="font-size: 16px; line-height: 19px; tab-size: 4;"><code data-line-numbers=""></code></pre>\n' +
-			'    <div class="editing-ui sl-block-content-preview visible-in-preview"><pre style="font-size: 16px; line-height: 19px; tab-size: 4;"><code data-line-numbers="" class="hljs clojure"><table class="hljs-ln"><tbody><tr><td class="hljs-ln-numbers"><div class="hljs-ln-line hljs-ln-n" data-line-number="1"></div></td><td class="hljs-ln-code"><div class="hljs-ln-line"></div></td></tr></tbody></table></code></pre></div></div>'
+			'    <div class="editing-ui sl-block-content-preview visible-in-preview"><pre style="font-size: 16px; line-height: 19px; tab-size: 4;"><code data-line-numbers="" class="hljs clojure"><table class="hljs-ln"><tbody><tr><td class="hljs-ln-numbers"><div class="hljs-ln-line hljs-ln-n" data-line-number="1"></div></td><td class="hljs-ln-code"><div class="hljs-ln-line"></div></td></tr></tbody></table></code></pre></div></div>' +
+			'</div>'
 		);
 	}
 	if (layout === LAYOUTS.MEDIA_LEFT) {
@@ -223,7 +231,100 @@ function getContentHTMLForLayout(content, layout) {
 		return '<div class="sl-block" data-block-type="code" style="width: 960px; height: 560px; left: 0px; top: 140px;" data-name="code-2cbcfe" data-origin-id="92d1e1eab6d52e46d135c8bc07ce0cf2"><div class="sl-block-content notranslate" data-highlight-theme="monokai" data-code-frame="none" style="z-index: 12;"><pre style="font-size: 16px; line-height: 19px; tab-size: 4;"><code data-line-numbers=""></code></pre><div class="editing-ui sl-block-content-preview visible-in-preview"><pre style="font-size: 16px; line-height: 19px; tab-size: 4;"><code data-line-numbers="" class="hljs clojure"><table class="hljs-ln"><tbody><tr><td class="hljs-ln-numbers"><div class="hljs-ln-line hljs-ln-n" data-line-number="1"></div></td><td class="hljs-ln-code"><div class="hljs-ln-line"></div></td></tr></tbody></table></code></pre></div></div></div>';
 	}
 
-	return `<div class="sl-block" data-block-type="text" data-name="text-ccbc0d" style="height: auto; width: 960px; left: 0px; top: 215px;" data-origin-id="c624ba8b801cc46fc3cdfd422ff6f5f2"><div class="sl-block-content" data-placeholder-tag="p" data-placeholder-text="Text" style="z-index: 10;">${content}</div></div>`;
+	return `<div class="sl-block" data-block-type="text" data-name="text-ccbc0d" style="height: auto; width: 960px; left: 0px; top: 190px;" data-origin-id="c624ba8b801cc46fc3cdfd422ff6f5f2"><div class="sl-block-content" data-placeholder-tag="p" data-placeholder-text="Text" style="z-index: 10;">${content}</div></div>`;
+}
+
+// Miro sometimes puts frame elements next to the frame instead of inside it, each one div level shallower:
+//   <div><div>Slide_text</div></div>
+//   <div><div><div>header</div></div></div>
+// This converts it to the nested structure the rest of the script expects:
+//   <div><div>Slide_text</div><div><div><div><div>header</div></div></div></div></div>
+function normalizeFrameStructure(html) {
+	const start = html.indexOf('<div');
+	if (start === -1) return html;
+
+	const elements = [];
+	const tagRegex = /<div\b[^>]*>|<\/div>/g;
+	tagRegex.lastIndex = start;
+	let depth = 0;
+	let elementStart = start;
+	let tag;
+	while ((tag = tagRegex.exec(html))) {
+		if (tag[0] === '</div>') {
+			depth--;
+			if (depth === 0) elements.push(html.slice(elementStart, tagRegex.lastIndex));
+		} else {
+			if (depth === 0) elementStart = tag.index;
+			depth++;
+		}
+	}
+
+	// Elements copied without their frame are wrapped in a single <div> with no frame name:
+	//   <div><div><div><div><div>header</div></div></div></div>...</div>
+	// Drop the wrapper's opening tag, as frame name removal does for regular slides.
+	if (elements.length === 1 && elements[0].startsWith('<div><div><div><div><div>')) {
+		return html.slice(0, start) + html.slice(start + '<div>'.length);
+	}
+
+	const [frame, ...children] = elements;
+	if (children.length === 0 || !/^<div><div>[^<]*<\/div><\/div>$/.test(frame)) return html;
+
+	const frameName = frame.slice('<div>'.length, -'</div>'.length);
+	return `${html.slice(0, start)}<div>${frameName}${children.map((child) => `<div>${child}</div>`).join('')}</div>`;
+}
+
+// Removes `color` / `background-color` declarations with near-black or near-white values
+// from inline styles, keeping the formatting of other declarations untouched.
+function removeNearBlackOrWhiteColors(html) {
+	return html.replace(/(\s)style=(["'])(.*?)\2/g, (match, space, quote, style) => {
+		const declarations = style
+			.split(/(?<=;)/)
+			.filter((declaration) => {
+				const [, property, value] =
+					declaration.match(/^\s*(color|background-color)\s*:\s*(.*?)\s*;?\s*$/i) ?? [];
+
+				return !property || !isNearBlackOrWhiteColor(value);
+			});
+
+		return `${space}style=${quote}${declarations.join('')}${quote}`;
+	});
+}
+
+// Based on isNearBlackOrWhiteColor from wnl-platform resources/assets/js/utils/colors.ts
+// A channel-based band rather than luminance: luminance would classify saturated
+// colors like #ffff00 as "near white" and #ff0000 as "near black".
+const NEAR_BLACK_MAX_CHANNEL = 0x44;
+const NEAR_WHITE_MIN_CHANNEL = 0xd0;
+
+// Supports hex (#rgb, #rgba, #rrggbb, #rrggbbaa) and rgb()/rgba() colors
+function colorToChannels(color) {
+	const normalized = color.trim().toLowerCase();
+
+	const hex = normalized.match(/^#([\da-f]{3,4}|[\da-f]{6}|[\da-f]{8})$/);
+	if (hex) {
+		const digits = hex[1].length <= 4 ? hex[1].replace(/./g, '$&$&') : hex[1];
+		return [0, 2, 4].map((i) => parseInt(digits.slice(i, i + 2), 16));
+	}
+
+	const rgb = normalized.match(/^rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)/);
+	return rgb ? rgb.slice(1, 4).map(Number) : null;
+}
+
+/**
+ * Tells whether a CSS color sits so close to black or white that it only reads
+ * well against one theme's background.
+ */
+function isNearBlackOrWhiteColor(color) {
+	const channels = colorToChannels(color);
+
+	if (!channels) {
+		return false;
+	}
+
+	return (
+		channels.every((channel) => channel <= NEAR_BLACK_MAX_CHANNEL) ||
+		channels.every((channel) => channel >= NEAR_WHITE_MIN_CHANNEL)
+	);
 }
 
 function capitalizeFirstLetter(val) {
@@ -280,5 +381,5 @@ function capitalizeFirstLetter(val) {
 })();
 
 if (typeof exports !== 'undefined') {
-	module.exports = { convertMiroHtmlToSlideHtml };
+	module.exports = { convertMiroHtmlToSlideHtml, isNearBlackOrWhiteColor };
 }
