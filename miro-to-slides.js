@@ -109,6 +109,7 @@ async function convertMiroHtmlToSlideHtml(miroHTML) {
 		)?.[0] ?? '';
 	content = content
 		.replace(/<div><div><div>(.*?)<\/div><\/div><\/div>/, '$1')
+		.replace(/<br\s*\/>/g, '<br>') // Miro uses both <br> and <br />
 		.replace(new RegExp(`^(?:${EMPTY_LINE})+`), '') // ignore empty lines before text
 		.replace(new RegExp(`(?:${EMPTY_LINE})+$`), '') // ignore empty lines after text
 		.replaceAll('<div>', '<p><span style="font-size:0.7em">')
